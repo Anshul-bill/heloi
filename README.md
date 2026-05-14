@@ -44,7 +44,7 @@ It is designed to be a defensible, presentation-ready platform suitable for pate
 *   **AI / Machine Learning:** PyTorch (Double Deep Q-Network), Gym (Environment modeling).
 *   **External APIs:** Open-Meteo (Weather), OpenWeatherMap (Weather Fallback), OpenStreetMap Overpass (3D Buildings/Trees).
 
-## 6. The Hybrid Learning Loop
+6. The Hybrid Learning Loop
 
 1.  **Select:** User inputs coordinates or clicks the map.
 2.  **Contextualize:** The backend fetches live weather and queries OSM for nearby 3D buildings.
@@ -52,3 +52,50 @@ It is designed to be a defensible, presentation-ready platform suitable for pate
 4.  **Inference:** The PyTorch Double DQN evaluates the complex 3D environment and commands the tracking servos to minimize shadow coverage while maximizing irradiance.
 5.  **Diagnose:** The gap between the mathematical baseline and the AI's actual yield is analyzed by heuristic algorithms to classify the current fault state.
 6.  **Visualize & Export:** Results are painted onto the frontend graphs, simulated in the 3D canvas, and packaged for MATLAB export.
+
+## 7. Thesis Documentation & Master Index
+
+The Helios-X project is supported by a comprehensive academic research framework. For deep technical analysis, refer to the following documentation:
+
+### [Thesis/Academic Structure](/docs/thesis/)
+*   **[Abstract & Methodology](/docs/thesis/abstract_and_methodology.md):** Academic summary, solar positioning math (NOAA), and irradiance modeling (Hottel/King).
+*   **[Results & Discussion](/docs/thesis/results_and_discussion.md):** Tracking efficiency gains, spectral/thermal accuracy analysis, and commercial impact metrics.
+*   **[Conclusion & Future Work](/docs/thesis/conclusion_and_future_work.md):** Prototype limitations, adaptive heuristics, and future multi-tenant SaaS directions.
+
+### [Technical Research](/docs/research/)
+*   **[Analytics & Diagnostics Engine](/docs/research/analytics_and_diagnostics.md):** Deep dive into the heuristic fault classifier, thermal derating logic, and financial loss thresholding.
+
+## 8. How to Navigate
+The documentation is organized to support both engineering and academic reviews. Start with the **Abstract & Methodology** to understand the physical foundations, then proceed to the **Analytics & Diagnostics Engine** for implementation details on the fault-isolation logic.
+
+## 9. How to Run Locally
+
+### Requirements
+- Python 3.10+
+- Node.js 18+
+
+### Step 1: Start the Backend (FastAPI + AI Policy Engine)
+```bash
+# Activate the virtual environment
+source venv/Scripts/activate  # Windows
+# source venv/bin/activate    # Linux/Mac
+
+# Run the Uvicorn server
+python -m uvicorn src.serve_dashboard:app --host 0.0.0.0 --port 8000
+```
+*The backend will run on `http://localhost:8000`.*
+
+### Step 2: Start the Frontend (Next.js 3D Digital Twin)
+```bash
+# Open a new terminal
+cd frontend
+
+# Install dependencies (if not already downloaded)
+npm install
+
+# Run the Next.js development server
+npm run dev
+```
+*The frontend will run on `http://localhost:3000`.*
+
+Once both are running, open your browser to `http://localhost:3000` and click **Run Simulation** to see the Reinforcement Learning policy action engine in a 3D environment!

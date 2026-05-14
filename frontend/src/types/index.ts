@@ -10,6 +10,10 @@ export interface SimulationResult {
     sun_alt: number;
     sun_az: number;
     action: string;
+    action_id: number;
+    tilt_bias: number;
+    azimuth_bias: number;
+    q_values: number[];
     energy_ai: number;
     temp_c: number;
     dni: number;

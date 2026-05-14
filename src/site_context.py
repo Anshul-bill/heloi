@@ -45,7 +45,8 @@ class SiteContextService:
         """
         
         try:
-            resp = await self.client.post(overpass_url, data={"data": query})
+            headers = {"User-Agent": "HeliosX/1.0"}
+            resp = await self.client.post(overpass_url, data={"data": query}, headers=headers)
             resp.raise_for_status()
             data = resp.json()
             

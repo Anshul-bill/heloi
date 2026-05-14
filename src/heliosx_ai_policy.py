@@ -34,8 +34,9 @@ class HeliosXPolicy:
         
         if TORCH_AVAILABLE:
             try:
-                # Load checkpoint (using weights_only=False to read the dict structure)
-                checkpoint = torch.load(model_path, map_location=torch.device('cpu'), weights_only=False)
+                # Load checkpoint using weights_only=True for security (prevents arbitrary code execution)
+                # Note: This requires the model architecture to be instantiated separately.
+                checkpoint = torch.load(model_path, map_location=torch.device('cpu'), weights_only=True)
                 
                 # Instantiate model architecture (matching the .pt config)
                 self.model = RegimeConditionedQNetwork(input_dim=25, hidden_layers=[128, 128, 64], output_dim=13)
@@ -60,7 +61,7 @@ class HeliosXPolicy:
         
     def _fallback_policy(self, raw_state: dict) -> dict:
         # Deterministic fallback: Identity tracking
-        return {"action_id": 3, "tilt_bias": 0, "azimuth_bias": 0, "mode": "identity"}
+        return {"action_id": 3, "tilt_bias": 0, "azimuth_bias": 0, "mode": "identity", "q_values": [0.0]*13}
         
     def _inference(self, raw_state: dict) -> dict:
         state_tensor = self._construct_state(raw_state)
@@ -68,11 +69,14 @@ class HeliosXPolicy:
             with torch.no_grad():
                 q_values = self.model(state_tensor)
                 action_id = torch.argmax(q_values).item()
+                q_list = q_values.squeeze().tolist()
         except Exception as e:
             logger.error(f"Inference failed: {e}. Using fallback.")
             return self._fallback_policy(raw_state)
             
-        return self._decode_action(action_id)
+        action = self._decode_action(action_id)
+        action["q_values"] = q_list
+        return action
 
     def _construct_state(self, raw: dict):
         # Physical State (14 Dimensions)

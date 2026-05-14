@@ -1,0 +1,33 @@
+### HELIOS-X CHORUS PULL REQUEST (PR) TASK ###
+
+TARGET: master branch
+PURPOSE: Comprehensive Multi-LLM Review and Validation of Helios-X Production Baseline.
+
+DESCRIPTION:
+This project has completed Phase 1 (Data Connectors), Phase 2 (Physics Engine), and Phase 3 (Diagnostics). The frontend has been redesigned with a 3D Digital Twin viewer. We are now transitioning this project to a new account. 
+
+INSTRUCTIONS FOR CHORUS AGENT:
+1. Review the entire `src/` directory for mathematical and physical consistency.
+2. Validate the `heliosx_ai_policy.py` integration with the `dqn_final_helios_x_v2_regime_conditioned.pt` model.
+3. Check the `DigitalTwin3D.tsx` component for rendering performance and any remaining NaN guards.
+4. Ensure the `/api/search` proxy is secure and correctly handles geocoding errors.
+
+QUORUM CONFIGURATION:
+- Writer/Lead: Claude 3.5 Sonnet
+- Peer Reviewer 1: GPT-4o (Focus on Security and API robustness)
+- Peer Reviewer 2: Gemini 1.5 Pro (Focus on Physics accuracy and Documentation)
+
+HOW TO INITIATE THIS TASK VIA CHORUS CLI:
+------------------------------------------
+Step 1: Initialize Chorus in the project root:
+npx @chorus-aidlc/chorus init
+
+Step 2: Start the Cockpit (Optional):
+npx @chorus-aidlc/chorus cockpit
+
+Step 3: Dispatch this PR task:
+npx @chorus-aidlc/chorus task "Review and finalize the production baseline for Helios-X. Inspect src/, frontend/src/, and tests/ for architectural integrity." --template code-review
+------------------------------------------
+
+LOGS:
+All previous session logs are recorded in the `CURRENT_STATUS.md` and `HANDOVER.md` files for model context.
