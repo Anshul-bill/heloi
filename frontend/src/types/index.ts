@@ -14,6 +14,7 @@ export interface SimulationResult {
     tilt_bias: number;
     azimuth_bias: number;
     q_values: number[];
+    energy_fixed: number;
     energy_ai: number;
     temp_c: number;
     dni: number;

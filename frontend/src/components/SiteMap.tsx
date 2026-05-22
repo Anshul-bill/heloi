@@ -38,8 +38,8 @@ function LocationMarker({ position, onPositionChange }: SiteMapProps) {
 
 export default function SiteMap({ position, onPositionChange }: SiteMapProps) {
   return (
-    <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-700">
-      <MapContainer center={[position.lat, position.lon]} zoom={13} scrollWheelZoom={true} className="h-full w-full">
+    <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-700 relative z-0">
+      <MapContainer key="primary-map" center={[position.lat, position.lon]} zoom={13} scrollWheelZoom={true} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

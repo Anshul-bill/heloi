@@ -6,10 +6,12 @@ import { runSimulation, api } from '@/lib/api';
 import { SimulationResult, Coordinates } from '@/types';
 import { Sun, Wind, Cloud, Droplets, AlertTriangle, DollarSign, Play, Pause } from 'lucide-react';
 import AnalyticsCharts from '@/components/AnalyticsCharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Label } from 'recharts';
 
 // Dynamically import Map to avoid SSR issues with Leaflet
 const SiteMap = dynamic(() => import('@/components/SiteMap'), { ssr: false });
 const DigitalTwin3D = dynamic(() => import('@/components/DigitalTwin3D'), { ssr: false });
+const ComparisonDashboard = dynamic(() => import('@/components/ComparisonDashboard'), { ssr: false });
 import RLPolicyVisualization from '@/components/RLPolicyVisualization';
 
 export default function Home() {
@@ -20,6 +22,12 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Use a ref for precise timestamp tracking in the animation loop
   const requestRef = useRef<number>(null);
@@ -124,19 +132,28 @@ export default function Home() {
       sun_az: (currentData.sun_az ?? 0) + ((nextData.sun_az ?? 0) - (currentData.sun_az ?? 0)) * progress,
       tilt_bias: (currentData.tilt_bias ?? 0) + ((nextData.tilt_bias ?? 0) - (currentData.tilt_bias ?? 0)) * progress,
       azimuth_bias: (currentData.azimuth_bias ?? 0) + ((nextData.azimuth_bias ?? 0) - (currentData.azimuth_bias ?? 0)) * progress,
+      energy_fixed: (currentData.energy_fixed ?? 0) + ((nextData.energy_fixed ?? 0) - (currentData.energy_fixed ?? 0)) * progress,
   } : currentData;
 
+  if (!mounted) return null;
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 p-4">
+    <>
+      <main className="min-h-screen bg-slate-950 text-slate-50 p-4">
       <header className="max-w-7xl mx-auto mb-6 flex justify-between items-center">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-yellow-200 bg-clip-text text-transparent">
           Helios-X Digital Twin
         </h1>
-        {result && (
-          <button onClick={handleExport} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-lg">
-            Export to MATLAB
+        <div className="flex gap-4">
+          <button onClick={() => setShowComparison(true)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-lg text-blue-400">
+            Compare Micro-Climates
           </button>
-        )}
+          {result && (
+            <button onClick={handleExport} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sm font-medium rounded-lg">
+              Export to MATLAB
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="max-w-screen-2xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[calc(100vh-6rem)]">
@@ -267,6 +284,13 @@ export default function Home() {
                       <p className="font-mono">{interpolatedData.dni.toFixed(0)}W/m&sup2;</p>
                     </div>
                   </div>
+                  <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg flex items-center gap-3 col-span-2">
+                    <Sun size={20} className="text-orange-400" />
+                    <div>
+                      <p className="text-xs text-slate-500">Instantaneous Power</p>
+                      <p className="font-mono text-orange-400 font-bold">{interpolatedData.energy_ai.toFixed(2)} W</p>
+                    </div>
+                  </div>
                 </div>
              ) : (
                 <p className="text-xs text-slate-600 italic">Waiting for simulation...</p>
@@ -274,21 +298,56 @@ export default function Home() {
            </div>
 
            {/* Charts Panel */}
-           <div>
-              <h2 className="text-sm font-semibold mb-3 text-slate-400 uppercase tracking-wider">Energy Yield</h2>
-              {result ? (
-                 <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg">
-                    <AnalyticsCharts data={result.timeseries} currentIndex={stepIndex} />
-                    <div className="mt-3 flex justify-between text-xs font-mono">
-                      <span className="text-slate-400">Fixed: {result.daily_totals.fixed_wh}</span>
-                      <span className="text-orange-400">AI: {result.daily_totals.ai_wh}</span>
-                    </div>
-                 </div>
-              ) : (
-                 <div className="h-48 border border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-600 text-xs">
-                    [ Yield Graphs ]
-                 </div>
-              )}
+           <div className="space-y-6">
+              <div>
+                <h2 className="text-sm font-semibold mb-3 text-slate-400 uppercase tracking-wider">Energy Yield (Wh)</h2>
+                {result ? (
+                   <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg">
+                      <AnalyticsCharts data={result.timeseries} currentIndex={stepIndex} />
+                      <div className="mt-3 flex justify-between text-[10px] font-mono whitespace-nowrap">
+                        <span className="text-slate-400">Fixed: {result.daily_totals.fixed_wh}</span>
+                        <span className="text-blue-400">Tracker: {result.daily_totals.tracker_wh}</span>
+                        <span className="text-orange-400 font-bold">AI: {result.daily_totals.ai_wh}</span>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="h-40 border border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-600 text-xs">
+                      [ Yield Graphs ]
+                   </div>
+                )}
+              </div>
+
+              <div>
+                <h2 className="text-sm font-semibold mb-3 text-slate-400 uppercase tracking-wider">Source Power (DNI)</h2>
+                {result ? (
+                   <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg">
+                      <div className="w-full h-32">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={result.timeseries} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
+                            <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickFormatter={(val, i) => i % 12 === 0 ? val : ''}>
+                               <Label value="Time" offset={-10} position="insideBottom" fill="#64748b" style={{ fontSize: '10px' }} />
+                            </XAxis>
+                            <YAxis stroke="#64748b" fontSize={10}>
+                               <Label value="W/m²" angle={-90} position="insideLeft" offset={10} fill="#64748b" style={{ fontSize: '10px', textAnchor: 'middle' }} />
+                            </YAxis>
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }}
+                              labelStyle={{ color: '#64748b' }}
+                            />
+                            {interpolatedData && (
+                                <ReferenceLine x={result.timeseries[stepIndex]?.time} stroke="#f97316" strokeDasharray="3 3" />
+                            )}
+                            <Line type="monotone" dataKey="dni" name="Irradiance" stroke="#eab308" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="h-32 border border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-600 text-xs">
+                      [ DNI Graph ]
+                   </div>
+                )}
+              </div>
            </div>
 
            {/* Diagnostics & Impact */}
@@ -329,5 +388,13 @@ export default function Home() {
 
       </div>
     </main>
+
+    {showComparison && (
+      <ComparisonDashboard 
+        onClose={() => setShowComparison(false)} 
+        initialCoords={coords} 
+      />
+    )}
+    </>
   );
 }

@@ -127,6 +127,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "tilt_bias": action.get("tilt_bias", 0),
             "azimuth_bias": action.get("azimuth_bias", 0),
             "q_values": action.get("q_values", []),
+            "energy_fixed": round(e_fix, 2),
             "energy_ai": round(e_ai, 2),
             "energy_tracker": round(e_tr, 2),
             "temp_c": temp_c,
