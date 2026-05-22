@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, List
 from datetime import datetime
 import httpx
-from fastapi import FastAPI, Depends, Request, Query
+import json
+from fastapi import FastAPI, Depends, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,17 +14,20 @@ from src.weather_service import WeatherService
 from src.site_context import SiteContextService
 from src.heliosx_sim_server import run_simulation
 from src.services.matlab_export_service import format_for_matlab
+from src.services.grid_manager import GridManager
+from src.services.hardware_bridge import HardwareBridge
 from src.database import get_db
 import src.db_models as db_models
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Set up the shared client with a User-Agent to comply with APIs like OSM Overpass
+    # Set up the shared client and specialized services
     headers = {"User-Agent": "HeliosX-DigitalTwin/1.0 (contact@heliosx.example.com)"}
     async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
         app.state.client = client
+        app.state.grid_manager = GridManager()
+        app.state.hardware_bridge = HardwareBridge()
         yield
-    # Clean up is handled by async with block
 
 app = FastAPI(title="Helios-X API Gateway", lifespan=lifespan)
 
@@ -45,6 +49,26 @@ def get_weather_service(client: httpx.AsyncClient = Depends(get_http_client)):
 
 def get_context_service(client: httpx.AsyncClient = Depends(get_http_client)):
     return SiteContextService(client=client)
+
+def get_grid_manager(request: Request) -> GridManager:
+    return request.app.state.grid_manager
+
+def get_hardware_bridge(request: Request) -> HardwareBridge:
+    return request.app.state.hardware_bridge
+
+@app.websocket("/ws/hardware")
+async def hardware_websocket(
+    websocket: WebSocket, 
+    bridge: HardwareBridge = Depends(get_hardware_bridge)
+):
+    """Low-latency IoT bridge for physical solar tracker hardware."""
+    await bridge.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await bridge.handle_telemetry(data)
+    except WebSocketDisconnect:
+        bridge.disconnect(websocket)
 
 @app.get("/weather", response_model=UnifiedEnvironmentalPayload)
 async def get_weather(
@@ -68,9 +92,11 @@ async def get_site_context(
 async def simulate(
     lat: LatQuery, 
     lon: LonQuery,
-    tariff: float = Query(0.15, ge=0),
+    tariff: float = Query(None, ge=0),
     weather_svc: WeatherService = Depends(get_weather_service),
     context_svc: SiteContextService = Depends(get_context_service),
+    grid_mgr: GridManager = Depends(get_grid_manager),
+    bridge: HardwareBridge = Depends(get_hardware_bridge),
     db: AsyncSession = Depends(get_db)
 ):
     req = CoordinatesRequest(lat=lat, lon=lon)
@@ -78,9 +104,13 @@ async def simulate(
     context = await context_svc.get_context(req)
     
     # Deterministic start time (today at midnight)
-    start_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    # Simple lon-based UTC offset
+    now = datetime.now()
+    start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     utc_offset = round(lon / 15.0)
+
+    # Use GridManager to calculate dynamic tariff if none provided
+    if tariff is None:
+        tariff = grid_mgr.get_current_tariff(now)
     
     result = await run_in_threadpool(
         run_simulation, 
@@ -92,9 +122,13 @@ async def simulate(
         tariff=tariff
     )
 
+    # Stream real-time target to hardware for the current noon-point state
+    # In production, this would be triggered by a continuous control loop.
+    current_action = result["timeseries"][24] 
+    await bridge.stream_command(current_action["tilt_bias"], current_action["azimuth_bias"])
+
     # Persist to Database
     try:
-        # 1. Ensure Site exists
         stmt = select(db_models.Site).where(
             db_models.Site.latitude == lat, 
             db_models.Site.longitude == lon
@@ -112,7 +146,6 @@ async def simulate(
             db.add(site)
             await db.flush()
 
-        # 2. Create Simulation Run record
         run = db_models.SimulationRun(
             site_id=site.id,
             weather_data=weather.model_dump(mode='json'),
@@ -121,20 +154,19 @@ async def simulate(
             total_ai_wh=result["daily_totals"]["ai_wh"],
             kwh_loss=result["commercial_impact"]["kwh_loss"],
             financial_loss_usd=result["commercial_impact"]["financial_loss_usd"],
+            total_revenue_usd=result["daily_totals"]["ai_revenue_usd"],
             maintenance_urgency=result["commercial_impact"]["urgency"]
         )
         db.add(run)
         await db.flush()
 
-        # 3. Log Faults
         for f in result.get("faults", []):
-            fault = db_models.FaultLog(
+            db.add(db_models.FaultLog(
                 simulation_id=run.id,
                 fault_type=f["type"],
                 severity=f["severity"],
                 message=f["message"]
-            )
-            db.add(fault)
+            ))
         
         await db.commit()
         result["db_id"] = run.id

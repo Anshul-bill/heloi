@@ -34,6 +34,7 @@ class SimulationRun(Base):
     # Financial
     kwh_loss = Column(Float)
     financial_loss_usd = Column(Float)
+    total_revenue_usd = Column(Float)
     maintenance_urgency = Column(String)
     
     # Relationships

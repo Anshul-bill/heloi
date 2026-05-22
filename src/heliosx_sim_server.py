@@ -7,8 +7,10 @@ from src.physics_engine.panel_feedback import calculate_energy
 from src.heliosx_ai_policy import HeliosXPolicy
 from src.physics_engine.fault_diagnosis import classify_faults
 from src.services.commercial_impact import calculate_impact
+from src.services.grid_manager import GridManager
 
 policy = HeliosXPolicy()
+grid_mgr = GridManager()
 
 DEFAULT_AQI = 50.0
 
@@ -66,6 +68,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     
     results = []
     total_fixed, total_tracker, total_ai = 0.0, 0.0, 0.0
+    total_revenue_ai = 0.0
     
     # Safe default regime (e.g., New Delhi regime 0)
     regime = [1.0] + [0.0] * 10
@@ -117,6 +120,10 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         total_tracker += e_tr
         total_ai += e_ai
         
+        # 5. Grid Economics
+        step_revenue = grid_mgr.calculate_revenue(e_ai, dt)
+        total_revenue_ai += step_revenue
+        
         results.append({
             "time": dt.strftime("%H:%M"),
             "sun_alt": round(alt, 2),
@@ -133,13 +140,17 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "temp_c": temp_c,
             "dni": round(dni, 2),
             "aqi": aqi,
-            "wind_speed": wind_speed
+            "wind_speed": wind_speed,
+            "grid_price": grid_mgr.get_current_tariff(dt),
+            "grid_load": grid_mgr.get_grid_stability_signal(dt),
+            "revenue": round(step_revenue, 4)
         })
         
     totals = {
         "fixed_wh": round(total_fixed, 2),
         "tracker_wh": round(total_tracker, 2),
-        "ai_wh": round(total_ai, 2)
+        "ai_wh": round(total_ai, 2),
+        "ai_revenue_usd": round(total_revenue_ai, 2)
     }
     
     results_dict = {
