@@ -73,6 +73,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     results = []
     total_fixed, total_tracker, total_ai = 0.0, 0.0, 0.0
     total_revenue_ai = 0.0
+    total_shaved_wh = 0.0
     
     # Pre-calculate avg_solar for curve flattening
     energy_ai_vals = []
@@ -172,6 +173,18 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         grid_unbalanced = base_demand - e_ai
         grid_balanced = base_demand - energy_to_grid
         
+        # Calculate Cumulative Shaved Energy
+        # each step is 30 mins, so divide power delta by 2 to get Wh
+        total_shaved_wh += abs(grid_unbalanced - grid_balanced) / 2.0
+        
+        # Define Pricing Zones
+        if grid_price < 0.10:
+            pricing_zone = "BUY"
+        elif grid_price > 0.30:
+            pricing_zone = "SELL"
+        else:
+            pricing_zone = "NEUTRAL"
+            
         # Calculate visualization variables
         bess_charge = max(0, e_ai - energy_to_grid) if bess_action > 0 else 0
         bess_discharge = max(0, energy_to_grid - e_ai) if bess_action < 0 else 0
@@ -198,6 +211,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "aqi": aqi,
             "wind_speed": wind_speed,
             "grid_price": grid_price,
+            "pricing_zone": pricing_zone,
             "grid_load": grid_load,
             "revenue": round(step_revenue, 4),
             "bess_soc": round(soc_percent, 1),
@@ -219,6 +233,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         "tracker_wh": round(total_tracker, 2),
         "ai_wh": round(total_ai, 2),
         "ai_revenue_usd": round(total_revenue_ai, 2),
+        "total_shaved_wh": round(total_shaved_wh, 2),
         "efficiency_score": round(efficiency_score, 1)
     }
     
