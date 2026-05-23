@@ -1,5 +1,6 @@
 import math
 import re
+import statistics
 from datetime import datetime, timedelta
 from src.physics_engine.solar_core import get_solar_position, get_clear_sky_dni
 from src.physics_engine.obstacle_engine import calculate_shadow_factor
@@ -73,6 +74,32 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     total_fixed, total_tracker, total_ai = 0.0, 0.0, 0.0
     total_revenue_ai = 0.0
     
+    # Pre-calculate avg_solar for curve flattening
+    energy_ai_vals = []
+    for step in range(48):
+        dt = start_dt + timedelta(minutes=30 * step)
+        alt, az = get_solar_position(lat, lon, utc_offset, dt)
+        dni = get_clear_sky_dni(alt, 100.0)
+        shadow = calculate_shadow_factor(alt, az, obstacles)
+        temp_c = weather.get("temperatureC", 25.0)
+        wind_speed = weather.get("windSpeed", 5.0)
+        aqi = kwargs.get("aqi", DEFAULT_AQI)
+        
+        state = {
+            "sun_altitude": alt, "sun_azimuth": az,
+            "hour_of_day": dt.hour + (dt.minute/60.0), 
+            "day_of_year": dt.timetuple().tm_yday,
+            "cloud_fraction": weather.get("cloudCoverPercent", 0.0) / 100.0,
+            "aqi": aqi, "shadow_factor": shadow,
+            "latitude": lat, "longitude": lon, "site_altitude": 100.0, "dni": dni,
+            "regime_vector": [1.0] + [0.0] * 10
+        }
+        action = policy.get_action(state)
+        _, _, e_ai = calculate_energy(dni, temp_c, wind_speed, aqi, shadow, alt, az, action)
+        energy_ai_vals.append(e_ai)
+        
+    avg_solar = sum(energy_ai_vals) / 48
+    
     # Reset BESS SoC for simulation
     battery.current_capacity_wh = battery.max_capacity_wh * 0.2
     
@@ -132,12 +159,22 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         soc = (battery.current_capacity_wh / battery.max_capacity_wh) * 100.0
         
         bess_state = [e_ai, soc, grid_price, grid_load, dt.hour + dt.minute/60.0]
-        bess_action = bess_agent.get_dispatch_action(bess_state)
+        # Pass avg_solar as target_export_w
+        bess_action = bess_agent.get_dispatch_action(bess_state, target_export_w=avg_solar)
         
         energy_to_grid, soc_percent = battery.step(bess_action, e_ai)
         
         step_revenue = (energy_to_grid / 1000.0) * grid_price
         total_revenue_ai += step_revenue
+        
+        # Transformation Variables
+        base_demand = grid_load * 500.0
+        grid_unbalanced = base_demand - e_ai
+        grid_balanced = base_demand - energy_to_grid
+        
+        # Calculate visualization variables
+        bess_charge = max(0, e_ai - energy_to_grid) if bess_action > 0 else 0
+        bess_discharge = max(0, energy_to_grid - e_ai) if bess_action < 0 else 0
         
         results.append({
             "time": dt.strftime("%H:%M"),
@@ -153,6 +190,9 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "energy_ai": round(e_ai, 2),
             "energy_tracker": round(e_tr, 2),
             "energy_exported": round(energy_to_grid, 2),
+            "grid_demand": round(base_demand, 2),
+            "grid_unbalanced": round(grid_unbalanced, 2),
+            "grid_balanced": round(grid_balanced, 2),
             "temp_c": temp_c,
             "dni": round(dni, 2),
             "aqi": aqi,
@@ -161,14 +201,25 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "grid_load": grid_load,
             "revenue": round(step_revenue, 4),
             "bess_soc": round(soc_percent, 1),
-            "bess_action": bess_action
+            "bess_action": bess_action,
+            "bess_charge": round(bess_charge, 2),
+            "bess_discharge": round(bess_discharge, 2)
         })
         
+    # Calculate efficiency score
+    unbalanced_vals = [r["grid_unbalanced"] for r in results]
+    balanced_vals = [r["grid_balanced"] for r in results]
+    var_unbalanced = statistics.variance(unbalanced_vals) if len(unbalanced_vals) > 1 else 0
+    var_balanced = statistics.variance(balanced_vals) if len(balanced_vals) > 1 else 0
+    
+    efficiency_score = 100.0 * (1.0 - var_balanced / var_unbalanced) if var_unbalanced > 0 else 0.0
+    
     totals = {
         "fixed_wh": round(total_fixed, 2),
         "tracker_wh": round(total_tracker, 2),
         "ai_wh": round(total_ai, 2),
-        "ai_revenue_usd": round(total_revenue_ai, 2)
+        "ai_revenue_usd": round(total_revenue_ai, 2),
+        "efficiency_score": round(efficiency_score, 1)
     }
     
     results_dict = {

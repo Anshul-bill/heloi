@@ -17,18 +17,26 @@ class BESSQNetwork(nn.Module):
         return self.fc(x)
 
 class BESSAgent:
-    def __init__(self):
+    def __init__(self, max_rate=2500.0):
         self.model = BESSQNetwork()
         self.model.eval()
+        self.max_rate = max_rate
 
-    def get_dispatch_action(self, state):
+    def get_dispatch_action(self, state, target_export_w=None):
         """
         state: [solar_yield, soc, grid_price, grid_load, hour]
+        target_export_w: target power to export to grid (for flattening)
         Returns: action in [-1.0, 1.0] 
         (Positive = charge, Negative = discharge)
         """
         solar_yield, soc, grid_price, grid_load, hour = state
         
+        if target_export_w is not None:
+            # Flattening logic: try to compensate for deviation from target
+            diff = solar_yield - target_export_w
+            action = diff / self.max_rate
+            return max(-1.0, min(1.0, action))
+
         # Heuristic fallback simulating trained behavior
         if grid_price < 0.10:
             return 1.0  # Charge aggressively (cheap price)

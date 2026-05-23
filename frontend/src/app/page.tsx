@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { runSimulation, api } from '@/lib/api';
-import { SimulationResult, Coordinates } from '@/types';
-import { Sun, Wind, Cloud, Droplets, AlertTriangle, DollarSign, Play, Pause, Activity, Zap, Battery } from 'lucide-react';
+import { Coordinates } from '@/types';
+import { Sun, AlertTriangle, Play, Pause, Activity, Zap, Battery } from 'lucide-react';
 import AnalyticsCharts from '@/components/AnalyticsCharts';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Label, AreaChart, Area, BarChart, Bar } from 'recharts';
+import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 
 // Dynamically import Map to avoid SSR issues with Leaflet
 const SiteMap = dynamic(() => import('@/components/SiteMap'), { ssr: false });
@@ -92,7 +92,7 @@ export default function Home() {
           const deltaTime = time - lastUpdateTimeRef.current;
           setCurrentStep((prev) => {
             const increment = deltaTime / 1000;
-            let next = prev + increment;
+            const next = prev + increment;
             if (next >= 47) {
               setIsPlaying(false);
               return 47;
@@ -163,9 +163,9 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-screen-2xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[calc(100vh-6rem)]">
+      <div className="max-w-screen-2xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-8rem)] min-h-0">
         
-        <section className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col h-full shadow-2xl">
+        <section className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col h-full shadow-2xl overflow-y-auto">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 uppercase tracking-tighter">
               <Zap size={18} className="text-orange-400" /> Location Settings
           </h2>
@@ -327,26 +327,33 @@ export default function Home() {
 
               <div>
                 <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between">
-                    BESS Activity (W)
-                    <span className="text-blue-500 font-black tracking-tighter">Arbitrage Loop</span>
+                    Grid Transformation (W)
+                    <span className="text-emerald-500 font-black tracking-tighter">Load Balancing</span>
                 </h2>
                 {result ? (
                    <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
                       <div className="w-full h-32">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={result.timeseries} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
+                          <AreaChart data={result.timeseries} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#334155" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#334155" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
                             <XAxis dataKey="time" hide />
                             <YAxis hide />
                             <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }} />
-                            <Bar dataKey="bess_charge" name="Charging" fill="#10b981" />
-                            <Bar dataKey="bess_discharge" name="Discharging" fill="#ef4444" />
-                          </BarChart>
+                            <Area type="monotone" dataKey="grid_demand" name="Base Demand" stroke="#475569" fillOpacity={1} fill="url(#colorDemand)" />
+                            <Line type="monotone" dataKey="grid_unbalanced" name="Unbalanced" stroke="#ef4444" strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                            <Line type="monotone" dataKey="grid_balanced" name="Balanced" stroke="#10b981" strokeWidth={2} dot={false} />
+                          </AreaChart>
                         </ResponsiveContainer>
                       </div>
                    </div>
                 ) : (
                    <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-700 text-[10px] uppercase font-bold">
-                      BESS Activity
+                      Grid Transformation
                    </div>
                 )}
               </div>
@@ -403,6 +410,16 @@ export default function Home() {
                     <div className="flex-1 border-l border-slate-800 pl-4">
                       <p className="text-[10px] font-bold text-slate-500 uppercase">Daily Earnings</p>
                       <p className="text-lg font-black text-emerald-500 tracking-tighter">${(result.daily_totals.ai_revenue_usd ?? 0).toFixed(2)}</p>
+                    </div>
+                 </div>
+
+                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl mb-3 flex flex-col shadow-inner">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Load Balancing Efficiency</p>
+                    <div className="flex items-end gap-2">
+                        <p className={`text-2xl font-black tracking-tighter ${result.daily_totals.efficiency_score > 80 ? 'text-emerald-500' : 'text-slate-400'}`}>
+                            {result.daily_totals.efficiency_score.toFixed(1)}%
+                        </p>
+                        <span className="text-[10px] text-slate-500 mb-1 font-bold uppercase italic">Optimization Grade</span>
                     </div>
                  </div>
 
