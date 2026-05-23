@@ -2,7 +2,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Coordinates } from '@/types';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Fix Leaflet icon issue in Next.js
 const customIcon = new L.Icon({
@@ -37,9 +37,14 @@ function LocationMarker({ position, onPositionChange }: SiteMapProps) {
 }
 
 export default function SiteMap({ position, onPositionChange }: SiteMapProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return <div className="h-64 w-full bg-slate-950 animate-pulse" />;
+
   return (
     <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-700 relative z-0">
-      <MapContainer key="primary-map" center={[position.lat, position.lon]} zoom={13} scrollWheelZoom={true} className="h-full w-full">
+      <MapContainer key={`${position.lat}-${position.lon}`} center={[position.lat, position.lon]} zoom={13} scrollWheelZoom={true} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

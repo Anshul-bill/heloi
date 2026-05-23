@@ -4,9 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { runSimulation, api } from '@/lib/api';
 import { SimulationResult, Coordinates } from '@/types';
-import { Sun, Wind, Cloud, Droplets, AlertTriangle, DollarSign, Play, Pause, Activity, Zap } from 'lucide-react';
+import { Sun, Wind, Cloud, Droplets, AlertTriangle, DollarSign, Play, Pause, Activity, Zap, Battery } from 'lucide-react';
 import AnalyticsCharts from '@/components/AnalyticsCharts';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Label, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Label, AreaChart, Area, BarChart, Bar } from 'recharts';
 
 // Dynamically import Map to avoid SSR issues with Leaflet
 const SiteMap = dynamic(() => import('@/components/SiteMap'), { ssr: false });
@@ -130,6 +130,8 @@ export default function Home() {
       grid_price: (currentData.grid_price ?? 0) + ((nextData.grid_price ?? 0) - (currentData.grid_price ?? 0)) * progress,
       grid_load: (currentData.grid_load ?? 0) + ((nextData.grid_load ?? 0) - (currentData.grid_load ?? 0)) * progress,
       revenue: (currentData.revenue ?? 0) + ((nextData.revenue ?? 0) - (currentData.revenue ?? 0)) * progress,
+      bess_soc: (currentData.bess_soc ?? 0) + ((nextData.bess_soc ?? 0) - (currentData.bess_soc ?? 0)) * progress,
+      energy_exported: (currentData.energy_exported ?? 0) + ((nextData.energy_exported ?? 0) - (currentData.energy_exported ?? 0)) * progress,
   } : currentData;
 
   if (!mounted) return null;
@@ -277,6 +279,20 @@ export default function Home() {
                       <p className="text-[10px] font-bold text-slate-500 uppercase">Grid Tariff</p>
                       <p className="font-mono text-lg text-yellow-400">${interpolatedData.grid_price.toFixed(2)}</p>
                   </div>
+                  <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-col justify-center col-span-2">
+                      <div className="flex justify-between items-center mb-1">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1">
+                              <Battery size={10} /> Battery Storage (BESS)
+                          </p>
+                          <span className="text-[10px] font-mono text-emerald-400">{(interpolatedData.bess_soc ?? 0).toFixed(1)}%</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                          <div 
+                              className="h-full bg-emerald-500 transition-all duration-500" 
+                              style={{ width: `${interpolatedData.bess_soc ?? 0}%` }}
+                          />
+                      </div>
+                  </div>
                   <div className="bg-slate-950 border border-orange-950 p-3 rounded-xl flex items-center gap-3 col-span-2 border-dashed">
                     <Zap size={20} className="text-orange-400" />
                     <div>
@@ -311,6 +327,32 @@ export default function Home() {
 
               <div>
                 <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between">
+                    BESS Activity (W)
+                    <span className="text-blue-500 font-black tracking-tighter">Arbitrage Loop</span>
+                </h2>
+                {result ? (
+                   <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+                      <div className="w-full h-32">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={result.timeseries} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
+                            <XAxis dataKey="time" hide />
+                            <YAxis hide />
+                            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }} />
+                            <Bar dataKey="bess_charge" name="Charging" fill="#10b981" />
+                            <Bar dataKey="bess_discharge" name="Discharging" fill="#ef4444" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-700 text-[10px] uppercase font-bold">
+                      BESS Activity
+                   </div>
+                )}
+              </div>
+
+              <div>
+                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between">
                     Grid Load Analysis
                     <span className="text-emerald-500 font-black tracking-tighter">Peak Shaving</span>
                 </h2>
@@ -336,6 +378,7 @@ export default function Home() {
                             )}
                             <Area type="monotone" dataKey="grid_price" name="Grid Tariff ($)" stroke="#10b981" fillOpacity={1} fill="url(#colorPrice)" strokeWidth={2} />
                             <Line type="monotone" dataKey="grid_load" name="Grid Load (%)" stroke="#3b82f6" strokeWidth={1} dot={false} strokeDasharray="5 5" />
+                            <Line type="step" dataKey="energy_exported" name="Exported (Wh)" stroke="#f59e0b" strokeWidth={2} dot={false} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>

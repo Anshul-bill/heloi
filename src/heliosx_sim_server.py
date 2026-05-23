@@ -8,9 +8,12 @@ from src.heliosx_ai_policy import HeliosXPolicy
 from src.physics_engine.fault_diagnosis import classify_faults
 from src.services.commercial_impact import calculate_impact
 from src.services.grid_manager import GridManager
+from src.bess_agent import BESSAgent, BatterySim
 
 policy = HeliosXPolicy()
 grid_mgr = GridManager()
+bess_agent = BESSAgent()
+battery = BatterySim()
 
 DEFAULT_AQI = 50.0
 
@@ -70,6 +73,9 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     total_fixed, total_tracker, total_ai = 0.0, 0.0, 0.0
     total_revenue_ai = 0.0
     
+    # Reset BESS SoC for simulation
+    battery.current_capacity_wh = battery.max_capacity_wh * 0.2
+    
     # Safe default regime (e.g., New Delhi regime 0)
     regime = [1.0] + [0.0] * 10
     
@@ -120,8 +126,17 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         total_tracker += e_tr
         total_ai += e_ai
         
-        # 5. Grid Economics
-        step_revenue = grid_mgr.calculate_revenue(e_ai, dt)
+        # 5. BESS Dispatch & Grid Economics
+        grid_price = grid_mgr.get_current_tariff(dt)
+        grid_load = grid_mgr.get_grid_stability_signal(dt)
+        soc = (battery.current_capacity_wh / battery.max_capacity_wh) * 100.0
+        
+        bess_state = [e_ai, soc, grid_price, grid_load, dt.hour + dt.minute/60.0]
+        bess_action = bess_agent.get_dispatch_action(bess_state)
+        
+        energy_to_grid, soc_percent = battery.step(bess_action, e_ai)
+        
+        step_revenue = (energy_to_grid / 1000.0) * grid_price
         total_revenue_ai += step_revenue
         
         results.append({
@@ -137,13 +152,16 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "energy_fixed": round(e_fix, 2),
             "energy_ai": round(e_ai, 2),
             "energy_tracker": round(e_tr, 2),
+            "energy_exported": round(energy_to_grid, 2),
             "temp_c": temp_c,
             "dni": round(dni, 2),
             "aqi": aqi,
             "wind_speed": wind_speed,
-            "grid_price": grid_mgr.get_current_tariff(dt),
-            "grid_load": grid_mgr.get_grid_stability_signal(dt),
-            "revenue": round(step_revenue, 4)
+            "grid_price": grid_price,
+            "grid_load": grid_load,
+            "revenue": round(step_revenue, 4),
+            "bess_soc": round(soc_percent, 1),
+            "bess_action": bess_action
         })
         
     totals = {
