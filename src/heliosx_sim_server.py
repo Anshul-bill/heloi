@@ -77,6 +77,7 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     
     # Pre-calculate avg_solar for curve flattening
     energy_ai_vals = []
+    # Simplified loop to get target
     for step in range(48):
         dt = start_dt + timedelta(minutes=30 * step)
         alt, az = get_solar_position(lat, lon, utc_offset, dt)
@@ -104,15 +105,13 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
     # Reset BESS SoC for simulation
     battery.current_capacity_wh = battery.max_capacity_wh * 0.2
     
-    # Safe default regime (e.g., New Delhi regime 0)
-    regime = [1.0] + [0.0] * 10
-    
-    for step in range(48): # 48 half-hour intervals
+    # Main simulation loop
+    for step in range(48):
         dt = start_dt + timedelta(minutes=30 * step)
         
         # 1. Solar Math
         alt, az = get_solar_position(lat, lon, utc_offset, dt)
-        dni = get_clear_sky_dni(alt, 100.0) # assume 100m site alt
+        dni = get_clear_sky_dni(alt, 100.0) 
         
         # 2. Shadows
         shadow = calculate_shadow_factor(alt, az, obstacles)
@@ -134,21 +133,12 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "longitude": lon, 
             "site_altitude": 100.0, 
             "dni": dni,
-            "regime_vector": regime
+            "regime_vector": [1.0] + [0.0] * 10
         }
         action = policy.get_action(state)
         
         # 4. Energy
-        e_fix, e_tr, e_ai = calculate_energy(
-            dni, 
-            temp_c, 
-            wind_speed, 
-            aqi, 
-            shadow, 
-            alt, 
-            az, 
-            action
-        )
+        e_fix, e_tr, e_ai = calculate_energy(dni, temp_c, wind_speed, aqi, shadow, alt, az, action)
         
         total_fixed += e_fix
         total_tracker += e_tr
@@ -156,11 +146,10 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         
         # 5. BESS Dispatch & Grid Economics
         grid_price = grid_mgr.get_current_tariff(dt)
-        grid_load = grid_mgr.get_grid_stability_signal(dt)
+        grid_load = grid_mgr.get_grid_stability_signal(dt, lat=lat, lon=lon)
         soc = (battery.current_capacity_wh / battery.max_capacity_wh) * 100.0
         
         bess_state = [e_ai, soc, grid_price, grid_load, dt.hour + dt.minute/60.0]
-        # Pass avg_solar as target_export_w
         bess_action = bess_agent.get_dispatch_action(bess_state, target_export_w=avg_solar)
         
         energy_to_grid, soc_percent = battery.step(bess_action, e_ai)
@@ -169,22 +158,14 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
         total_revenue_ai += step_revenue
         
         # Transformation Variables
-        base_demand = grid_load * 500.0
+        # Scale demand based on latitude (Equatorial regions have higher HVAC load)
+        demand_scale = 500.0 * (1.0 + abs(lat) / 90.0)
+        base_demand = grid_load * demand_scale
         grid_unbalanced = base_demand - e_ai
         grid_balanced = base_demand - energy_to_grid
         
-        # Calculate Cumulative Shaved Energy
-        # each step is 30 mins, so divide power delta by 2 to get Wh
         total_shaved_wh += abs(grid_unbalanced - grid_balanced) / 2.0
         
-        # Define Pricing Zones
-        if grid_price < 0.10:
-            pricing_zone = "BUY"
-        elif grid_price > 0.30:
-            pricing_zone = "SELL"
-        else:
-            pricing_zone = "NEUTRAL"
-            
         # Calculate visualization variables
         bess_charge = max(0, e_ai - energy_to_grid) if bess_action > 0 else 0
         bess_discharge = max(0, energy_to_grid - e_ai) if bess_action < 0 else 0
@@ -211,7 +192,6 @@ def run_simulation(lat: float, lon: float, weather: dict, context: dict, start_d
             "aqi": aqi,
             "wind_speed": wind_speed,
             "grid_price": grid_price,
-            "pricing_zone": pricing_zone,
             "grid_load": grid_load,
             "revenue": round(step_revenue, 4),
             "bess_soc": round(soc_percent, 1),

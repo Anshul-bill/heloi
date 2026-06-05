@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { runSimulation, api } from '@/lib/api';
-import { Coordinates } from '@/types';
-import { Sun, AlertTriangle, Play, Pause, Activity, Zap, Battery } from 'lucide-react';
+import { SimulationResult, Coordinates } from '@/types';
+import { Sun, Wind, Cloud, Droplets, AlertTriangle, DollarSign, Play, Pause, Activity, Zap, Battery, Calendar, TrendingUp, ArrowRight, Gauge } from 'lucide-react';
 import AnalyticsCharts from '@/components/AnalyticsCharts';
-import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area, ComposedChart } from 'recharts';
+import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Label, AreaChart, Area, ComposedChart, Legend, CartesianGrid } from 'recharts';
 
 // Dynamically import Map to avoid SSR issues with Leaflet
 const SiteMap = dynamic(() => import('@/components/SiteMap'), { ssr: false });
@@ -25,6 +25,9 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const [hwConnected, setHwConnected] = useState(false);
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [day, setDay] = useState(new Date().getDate());
+  const [year, setYear] = useState(new Date().getFullYear());
   
   useEffect(() => {
     setMounted(true);
@@ -45,27 +48,37 @@ export default function Home() {
       if (!res.ok) throw new Error("Search failed");
       const data = await res.json();
       if (data && data.length > 0) {
-        setCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+        const newCoords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+        setCoords(newCoords);
+        setResult(null); 
+        
+        // Auto-run simulation
+        setLoading(true);
+        const simData = await runSimulation(newCoords.lat, newCoords.lon, 0.15, year, month, day);
+        setResult(simData);
+        setCurrentStep(24);
+        setIsPlaying(false);
       } else {
         alert("Location not found");
       }
     } catch (error) {
       console.error("Search failed", error);
-      alert("Search failed. Please try again.");
+      alert("Location search is temporarily unavailable.");
     }
     setSearching(false);
+    setLoading(false);
   };
 
   const handleSimulate = async () => {
     setLoading(true);
     try {
-      const data = await runSimulation(coords.lat, coords.lon);
+      const data = await runSimulation(coords.lat, coords.lon, 0.15, year, month, day);
       setResult(data);
       setCurrentStep(24);
       setIsPlaying(false);
     } catch (error) {
       console.error("Simulation failed", error);
-      alert("Simulation failed. Is the backend running?");
+      alert("Simulation failed. Check backend.");
     }
     setLoading(false);
   };
@@ -169,8 +182,43 @@ export default function Home() {
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 uppercase tracking-tighter">
               <Zap size={18} className="text-orange-400" /> Location Settings
           </h2>
-          <div className="mb-4 flex-shrink-0">
-             <SiteMap position={coords} onPositionChange={setCoords} />
+          <div className="mb-4 flex-shrink-0 min-h-[16rem]">
+             <SiteMap key={`${coords.lat}-${coords.lon}`} position={coords} onPositionChange={setCoords} />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-widest flex items-center gap-1">
+                <Calendar size={10} /> Simulation Date
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+                <select 
+                    value={day} 
+                    onChange={(e) => setDay(parseInt(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs outline-none focus:border-orange-500 font-bold text-slate-300"
+                >
+                    {Array.from({length: 31}, (_, i) => (
+                        <option key={i+1} value={i+1}>{i+1}</option>
+                    ))}
+                </select>
+                <select 
+                    value={month} 
+                    onChange={(e) => setMonth(parseInt(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs outline-none focus:border-orange-500 font-bold text-slate-300"
+                >
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((m, i) => (
+                        <option key={i+1} value={i+1}>{m}</option>
+                    ))}
+                </select>
+                <select 
+                    value={year} 
+                    onChange={(e) => setYear(parseInt(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs outline-none focus:border-orange-500 font-bold text-slate-300"
+                >
+                    {Array.from({length: 101}, (_, i) => 2000 + i).map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                    ))}
+                </select>
+            </div>
           </div>
           
           <div className="space-y-3 mb-4">
@@ -255,14 +303,14 @@ export default function Home() {
            )}
         </section>
 
-        <section className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col h-full overflow-y-auto space-y-6 shadow-2xl">
+        <section className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col h-full overflow-y-auto space-y-6 shadow-2xl text-slate-50">
            
            <div>
              <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex items-center gap-2">
                  <Activity size={14} /> Telemetry State
              </h2>
              {interpolatedData ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 text-slate-50">
                   <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl flex flex-col justify-center">
                       <p className="text-[10px] font-bold text-slate-500 uppercase">Surface Temp</p>
                       <p className="font-mono text-lg">{interpolatedData.temp_c.toFixed(1)}&deg;C</p>
@@ -308,7 +356,7 @@ export default function Home() {
 
            <div className="space-y-6">
               <div>
-                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest">Energy Yield (Wh)</h2>
+                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest text-slate-50">Energy Generation (Wh)</h2>
                 {result ? (
                    <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
                       <AnalyticsCharts data={result.timeseries} currentIndex={stepIndex} />
@@ -326,30 +374,74 @@ export default function Home() {
               </div>
 
               <div>
-                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between">
-                    Grid Transformation (W)
-                    <span className="text-emerald-500 font-black tracking-tighter">Load Balancing</span>
+                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between text-slate-50">
+                    Power Generation (W)
+                    <span className="text-orange-500 font-black tracking-tighter">Real-Time</span>
                 </h2>
                 {result ? (
                    <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
-                      <div className="w-full h-32">
+                      <div className="w-full h-40">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={result.timeseries} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
+                          <AreaChart data={result.timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                            <defs>
+                                <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="time" stroke="#475569" fontSize={8} tickFormatter={(v, i) => i % 12 === 0 ? v : ''}>
+                                <Label value="Time" offset={-10} position="insideBottom" fill="#475569" style={{ fontSize: '8px' }} />
+                            </XAxis>
+                            <YAxis stroke="#475569" fontSize={8}>
+                                <Label value="Watts" angle={-90} position="insideLeft" offset={10} fill="#475569" style={{ fontSize: '8px' }} />
+                            </YAxis>
+                            <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }} />
+                            <Area type="monotone" dataKey="energy_ai" name="AI Power (W)" stroke="#f97316" fillOpacity={1} fill="url(#colorPower)" strokeWidth={2} />
+                            <Line type="monotone" dataKey="dni" name="Source (DNI)" stroke="#475569" strokeWidth={1} dot={false} strokeDasharray="5 5" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-700 text-[10px] uppercase font-bold">
+                      Power Trace
+                   </div>
+                )}
+              </div>
+
+              <div>
+                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between text-slate-50">
+                    Grid Transformation (W)
+                    <span className="text-emerald-500 font-black tracking-tighter">Load Impact</span>
+                </h2>
+                {result ? (
+                   <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+                      <div className="w-full h-40">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={result.timeseries} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                             <defs>
                                 <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#334155" stopOpacity={0.3}/>
                                 <stop offset="95%" stopColor="#334155" stopOpacity={0}/>
                                 </linearGradient>
                             </defs>
-                            <XAxis dataKey="time" hide />
-                            <YAxis hide />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="time" stroke="#475569" fontSize={8} tickFormatter={(v, i) => i % 12 === 0 ? v : ''}>
+                                <Label value="Time" offset={-10} position="insideBottom" fill="#475569" style={{ fontSize: '8px' }} />
+                            </XAxis>
+                            <YAxis stroke="#475569" fontSize={8}>
+                                <Label value="Watts" angle={-90} position="insideLeft" offset={10} fill="#475569" style={{ fontSize: '8px' }} />
+                            </YAxis>
                             <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }} />
+                            <Legend verticalAlign="top" align="right" height={20} iconType="circle" wrapperStyle={{ fontSize: '8px', marginTop: '-10px' }} />
                             <Area type="monotone" dataKey="grid_demand" name="Base Demand" stroke="#475569" fillOpacity={1} fill="url(#colorDemand)" />
-                            <Line type="monotone" dataKey="grid_unbalanced" name="Unbalanced" stroke="#ef4444" strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                            <Line type="monotone" dataKey="grid_balanced" name="Balanced" stroke="#10b981" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="grid_unbalanced" name="Net (No BESS)" stroke="#ef4444" strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                            <Line type="monotone" dataKey="grid_balanced" name="Net (With AI/BESS)" stroke="#10b981" strokeWidth={2} dot={false} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
+                      <p className="text-[8px] text-slate-600 mt-2 italic">Dashed red shows the unmanaged 'Duck Curve'. Solid green is the AI-balanced result.</p>
                    </div>
                 ) : (
                    <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-700 text-[10px] uppercase font-bold">
@@ -359,32 +451,33 @@ export default function Home() {
               </div>
 
               <div>
-                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between">
-                    Grid Load Analysis
+                <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex justify-between text-slate-50">
+                    BESS Market Analysis
                     <span className="text-emerald-500 font-black tracking-tighter">Peak Shaving</span>
                 </h2>
                 {result ? (
                    <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl">
-                      <div className="w-full h-32">
+                      <div className="w-full h-40">
                         <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={result.timeseries} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
-                            <XAxis dataKey="time" hide />
-                            <YAxis hide />
-                            <YAxis yAxisId="right" orientation="right" hide />
+                          <ComposedChart data={result.timeseries} margin={{ top: 10, right: 30, left: -20, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="time" stroke="#475569" fontSize={8} tickFormatter={(v, i) => i % 12 === 0 ? v : ''} />
+                            <YAxis yAxisId="left" stroke="#475569" fontSize={8} unit="$" />
+                            <YAxis yAxisId="right" orientation="right" stroke="#a855f7" fontSize={8} unit="%" />
                             <Tooltip 
                               contentStyle={{ backgroundColor: '#0f172a', border: 'none', fontSize: '10px' }}
                               labelStyle={{ color: '#64748b' }}
                             />
+                            <Legend verticalAlign="top" align="right" height={20} wrapperStyle={{ fontSize: '8px', marginTop: '-10px' }} />
                             {interpolatedData && (
                                 <ReferenceLine x={result.timeseries[stepIndex]?.time} stroke="#f97316" strokeDasharray="3 3" />
                             )}
-                            <Area type="monotone" dataKey="grid_demand" name="Base Demand" fill="#334155" fillOpacity={0.3} stroke="none" />
-                            <Line type="monotone" dataKey="grid_unbalanced" name="Unbalanced" stroke="#ef4444" strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                            <Line type="monotone" dataKey="grid_balanced" name="Balanced" stroke="#10b981" strokeWidth={3} dot={false} style={{ filter: 'drop-shadow(0 0 8px #10b981)' }} />
-                            <Area yAxisId="right" type="monotone" dataKey="bess_soc" name="Battery SoC" fill="#a855f7" fillOpacity={0.1} stroke="none" />
+                            <Line yAxisId="left" type="monotone" dataKey="grid_price" name="Tariff ($)" stroke="#10b981" strokeWidth={2} dot={false} />
+                            <Area yAxisId="right" type="monotone" dataKey="bess_soc" name="Battery SoC (%)" fill="#a855f7" fillOpacity={0.1} stroke="#a855f7" strokeWidth={1} />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
+                      <p className="text-[8px] text-slate-600 mt-2 italic">Tracks Battery Fuel level against live Electricity Price ($). Proves arbitrage decision logic.</p>
                    </div>
                 ) : (
                    <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center text-slate-700 text-[10px] uppercase font-bold">
@@ -395,38 +488,46 @@ export default function Home() {
            </div>
 
            {result && (
-              <div className="mt-auto border-t border-slate-800 pt-6">
-                 <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest">Financial Engine</h2>
+              <div className="mt-auto border-t border-slate-800 pt-6 text-slate-50">
+                 <h2 className="text-xs font-bold mb-3 text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <TrendingUp size={14} /> Optimization Insights
+                 </h2>
                  
-                 <div className="grid grid-cols-3 gap-2 mb-3">
+                 <div className="grid grid-cols-3 gap-2 mb-3 text-slate-50">
                     <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex flex-col items-center justify-center text-center">
-                        <p className="text-[8px] font-bold text-slate-500 uppercase">Peak Shaved</p>
+                        <p className="text-[8px] font-bold text-slate-500 uppercase">Shaved</p>
                         <p className="text-sm font-black text-orange-400">{(result.daily_totals.total_shaved_wh ?? 0).toFixed(0)} Wh</p>
                     </div>
-                    <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex flex-col items-center justify-center text-center">
+                    <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex flex-col items-center justify-center text-center text-slate-50">
                         <p className="text-[8px] font-bold text-slate-500 uppercase">Stability</p>
                         <p className="text-sm font-black text-emerald-400">{(result.daily_totals.efficiency_score ?? 0).toFixed(1)}%</p>
                     </div>
-                    <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex flex-col items-center justify-center text-center">
+                    <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex flex-col items-center justify-center text-center text-slate-50">
                         <p className="text-[8px] font-bold text-slate-500 uppercase">Capture</p>
                         <p className="text-sm font-black text-blue-400">${(result.daily_totals.ai_revenue_usd ?? 0).toFixed(2)}</p>
                     </div>
                  </div>
 
-                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl mb-3 flex items-center justify-between shadow-inner">
-                    <div className="flex-1">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase">Est. Revenue Loss</p>
-                      <p className="text-lg font-black text-red-500 tracking-tighter">${result.commercial_impact.financial_loss_usd.toFixed(2)}</p>
+                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl mb-3 shadow-inner text-slate-50">
+                    <div className="flex justify-between items-center mb-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Economic Transformation</p>
+                        <ArrowRight size={10} className="text-slate-700" />
                     </div>
-                    <div className="flex-1 border-l border-slate-800 pl-4">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase">Daily Earnings</p>
-                      <p className="text-lg font-black text-emerald-500 tracking-tighter">${(result.daily_totals.ai_revenue_usd ?? 0).toFixed(2)}</p>
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-[8px] text-slate-500">Unmanaged Loss</p>
+                          <p className="text-lg font-black text-red-500">-${result.commercial_impact.financial_loss_usd.toFixed(2)}</p>
+                        </div>
+                        <div className="flex-1 border-l border-slate-800 pl-4 text-slate-50">
+                          <p className="text-[8px] text-slate-500">Managed Yield</p>
+                          <p className="text-lg font-black text-emerald-500">+${(result.daily_totals.ai_revenue_usd ?? 0).toFixed(2)}</p>
+                        </div>
                     </div>
                  </div>
 
-                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl mb-3 flex flex-col shadow-inner">
+                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl mb-3 flex flex-col shadow-inner text-slate-50">
                     <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Load Balancing Efficiency</p>
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-end gap-2 text-slate-50">
                         <p className={`text-2xl font-black tracking-tighter ${result.daily_totals.efficiency_score > 80 ? 'text-emerald-500' : 'text-slate-400'}`}>
                             {result.daily_totals.efficiency_score.toFixed(1)}%
                         </p>
@@ -450,7 +551,7 @@ export default function Home() {
                         </div>
                       </div>
                     )) : (
-                      <p className="text-emerald-400 text-[10px] font-bold bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 uppercase tracking-tight">
+                      <p className="text-emerald-400 text-[10px] font-bold bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 uppercase tracking-tight text-center">
                         All systems operational. Yield maximized.
                       </p>
                     )}

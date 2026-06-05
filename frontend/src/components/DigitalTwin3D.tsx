@@ -292,11 +292,11 @@ export default function DigitalTwin3D({ obstacles, sunAlt, sunAz, panelAction, t
       }
     }
     
-    if (zHeight === 0) {
+    if (zHeight === 0 && buildings.length > 0) {
        zHeight = Math.max(...buildings.map(b => b.z_height || 10));
     }
     
-    return zHeight;
+    return isFinite(zHeight) ? zHeight : 0;
   }, [obstacles]);
 
   return (

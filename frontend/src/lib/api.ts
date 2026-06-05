@@ -16,8 +16,12 @@ export const fetchSiteContext = async (lat: number, lon: float) => {
     return response.data;
 };
 
-export const runSimulation = async (lat: number, lon: float, tariff: number = 0.15) => {
-    const response = await api.post(`/simulate?lat=${lat}&lon=${lon}&tariff=${tariff}`);
+export const runSimulation = async (lat: number, lon: number, tariff: number = 0.15, year?: number, month?: number, day?: number) => {
+    let url = `/simulate?lat=${lat}&lon=${lon}&tariff=${tariff}`;
+    if (year) url += `&year=${year}`;
+    if (month) url += `&month=${month}`;
+    if (day) url += `&day=${day}`;
+    const response = await api.post(url);
     return response.data;
 };
 

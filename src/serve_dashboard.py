@@ -92,6 +92,9 @@ async def get_site_context(
 async def simulate(
     lat: LatQuery, 
     lon: LonQuery,
+    year: int = Query(None, ge=2000, le=2100),
+    month: int = Query(None, ge=1, le=12),
+    day: int = Query(None, ge=1, le=31),
     tariff: float = Query(None, ge=0),
     weather_svc: WeatherService = Depends(get_weather_service),
     context_svc: SiteContextService = Depends(get_context_service),
@@ -100,17 +103,28 @@ async def simulate(
     db: AsyncSession = Depends(get_db)
 ):
     req = CoordinatesRequest(lat=lat, lon=lon)
-    weather = await weather_svc.get_weather(req)
+    
+    # Use selected date if provided, else current
+    now = datetime.now()
+    try:
+        if year and month and day:
+            now = now.replace(year=year, month=month, day=day)
+        elif month:
+            now = now.replace(month=month)
+    except ValueError:
+        pass
+        
+    start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # NEW: Fetch correct weather (Archive vs Forecast) based on start_dt
+    weather = await weather_svc.get_weather(req, target_dt=start_dt)
     context = await context_svc.get_context(req)
     
-    # Deterministic start time (today at midnight)
-    now = datetime.now()
-    start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     utc_offset = round(lon / 15.0)
 
     # Use GridManager to calculate dynamic tariff if none provided
     if tariff is None:
-        tariff = grid_mgr.get_current_tariff(now)
+        tariff = grid_mgr.get_current_tariff(start_dt)
     
     result = await run_in_threadpool(
         run_simulation, 
@@ -122,8 +136,7 @@ async def simulate(
         tariff=tariff
     )
 
-    # Stream real-time target to hardware for the current noon-point state
-    # In production, this would be triggered by a continuous control loop.
+    # Stream real-time target to hardware
     current_action = result["timeseries"][24] 
     await bridge.stream_command(current_action["tilt_bias"], current_action["azimuth_bias"])
 
